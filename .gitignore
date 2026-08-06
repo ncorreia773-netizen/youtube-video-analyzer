@@ -1,3 +1,4 @@
+@@ -0,0 +1,218 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -216,3 +217,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Arquivos gerados pelo analisador
+audio_baixado.mp3
+transcricao.txt
+resumo_video.txt
