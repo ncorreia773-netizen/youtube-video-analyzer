@@ -1,88 +1,145 @@
 """
-analisador de video do youtube
-esse script baixa o audio de um video
-depois transcreve o audio
-e no final manda o texto pra uma ia resumir
+Analisador de vídeo do YouTube
+Baixa o áudio, transcreve e manda pro resumo da IA
 """
 
 import os
 import sys
 
-# aqui eu coloco as chaves das apis
-# tem que trocar pelas suas chaves de verdade
+# Coloca suas chaves aqui
 ANTHROPIC_API_KEY = "COLOQUE_SUA_CHAVE_DA_ANTHROPIC_AQUI"
 OPENAI_API_KEY = "COLOQUE_SUA_CHAVE_DA_OPENAI_AQUI"
 
-# aqui eu escolho qual ia eu quero usar
-# pode ser "claude" ou "chatgpt"
-IA_ESCOLHIDA = "claude"
+# Escolhe a IA: "claude" ou "chatgpt"
+IA = "claude"
 
-# modelo do whisper
-# quanto maior o modelo mais demora
+# Modelo do Whisper (base é mais rápido, large é mais preciso)
 MODELO_WHISPER = "base"
 
-# nome do arquivo de audio que vai ser baixado
-NOME_DO_ARQUIVO = "audio_baixado"
+ARQUIVO_AUDIO = "audio_baixado"
 
-def baixar_audio_do_video(url_do_video):
-    print("")
-    print("agora vou baixar o audio do video")
-    print("isso pode demorar um pouco dependendo do tamanho")
-    print("")
 
-    # importo o yt_dlp aqui dentro
+def baixar_audio(url):
+    print("\nBaixando o áudio do vídeo...")
+    print("Pode demorar um pouco dependendo do tamanho.\n")
+
     import yt_dlp
 
-    # monto as opcoes pro download
-    opcoes_do_download = {}
-    opcoes_do_download["format"] = "bestaudio/best"
-    opcoes_do_download["outtmpl"] = NOME_DO_ARQUIVO + ".%(ext)s"
-    opcoes_do_download["quiet"] = False
-    opcoes_do_download["noplaylist"] = True
-
-    # essa parte e pro ffmpeg converter pra mp3
-    post_processor = {}
-    post_processor["key"] = "FFmpegExtractAudio"
-    post_processor["preferredcodec"] = "mp3"
-    post_processor["preferredquality"] = "192"
-
-    lista_de_post = []
-    lista_de_post.append(post_processor)
-    opcoes_do_download["postprocessors"] = lista_de_post
+    opcoes = {
+        "format": "bestaudio/best",
+        "outtmpl": ARQUIVO_AUDIO + ".%(ext)s",
+        "quiet": False,
+        "noplaylist": True,
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "192",
+        }],
+    }
 
     try:
-        # aqui eu baixo o video
-        ydl = yt_dlp.YoutubeDL(opcoes_do_download)
-        informacoes = ydl.extract_info(url_do_video, download=True)
-        titulo_do_video = informacoes.get("title", "video_sem_titulo")
-        ydl.close()
-    except Exception as erro_que_deu:
-        print("deu erro quando tentei baixar o audio")
-        print("o erro foi esse:")
-        print(erro_que_deu)
-        print("vou sair do programa")
+        with yt_dlp.YoutubeDL(opcoes) as ydl:
+            info = ydl.extract_info(url, download=True)
+            titulo = info.get("title", "video_sem_titulo")
+    except Exception as e:
+        print("Erro ao baixar o áudio:")
+        print(e)
         sys.exit(1)
 
-    # agora eu verifico se o arquivo realmente existe
-    caminho_do_audio = NOME_DO_ARQUIVO + ".mp3"
-    arquivo_existe = os.path.exists(caminho_do_audio)
+    caminho = ARQUIVO_AUDIO + ".mp3"
 
-    if arquivo_existe == True:
-        print("o audio foi baixado com sucesso")
-        print("o arquivo esta em:")
-        print(caminho_do_audio)
+    if os.path.exists(caminho):
+        print("Áudio baixado com sucesso!")
+        print(f"Arquivo: {caminho}")
     else:
-        print("nao encontrei o arquivo de audio")
-        print("algo deu errado no download")
+        print("Não encontrei o arquivo de áudio. Algo deu errado.")
         sys.exit(1)
 
-    return caminho_do_audio, titulo_do_video
+    return caminho, titulo
 
-def transcrever_o_audio(caminho_do_audio):
-    print("")
-    print("agora vou transcrever o audio pro texto")
-    print("essa parte demora bastante")
-    print("principalmente se o video for longo")
-    print("")
 
-    # importo o whisper 
+def transcrever_audio(caminho_audio):
+    print("\nTranscrevendo o áudio...")
+    print("Essa parte demora bastante, principalmente se o vídeo for longo.\n")
+
+    import whisper
+
+    try:
+        modelo = whisper.load_model(MODELO_WHISPER)
+        resultado = modelo.transcribe(caminho_audio, language="pt")
+        texto = resultado["text"]
+    except Exception as e:
+        print("Erro na transcrição:")
+        print(e)
+        sys.exit(1)
+
+    print("Transcrição concluída!")
+    return texto
+
+
+def resumir_texto(texto, titulo):
+    print("\nMandando o texto pra IA resumir...\n")
+
+    prompt = f"""Resuma o conteúdo do vídeo abaixo de forma clara e objetiva.
+Título do vídeo: {titulo}
+
+Transcrição:
+{texto}
+"""
+
+    try:
+        if IA == "claude":
+            import anthropic
+            client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            mensagem = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            resumo = mensagem.content[0].text
+
+        elif IA == "chatgpt":
+            from openai import OpenAI
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            resposta = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            resumo = resposta.choices[0].message.content
+
+        else:
+            print("IA inválida. Use 'claude' ou 'chatgpt'.")
+            sys.exit(1)
+
+    except Exception as e:
+        print("Erro ao chamar a IA:")
+        print(e)
+        sys.exit(1)
+
+    return resumo
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Uso: python script.py <url_do_video>")
+        sys.exit(1)
+
+    url = sys.argv[1]
+
+    caminho_audio, titulo = baixar_audio(url)
+    texto = transcrever_audio(caminho_audio)
+    resumo = resumir_texto(texto, titulo)
+
+    print("\n" + "="*50)
+    print("RESUMO DO VÍDEO")
+    print("="*50)
+    print(f"\nTítulo: {titulo}\n")
+    print(resumo)
+    print("\n" + "="*50)
+
+    # Opcional: apagar o áudio depois
+    # os.remove(caminho_audio)
+
+
+if __name__ == "__main__":
+    main()
